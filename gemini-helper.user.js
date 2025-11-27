@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Gemini Helper
 // @namespace    http://tampermonkey.net/
-// @version      0.2
+// @version      0.3
 // @description  Save and restore prompts and images in Gemini
 // @author       lemontea
 // @match        https://gemini.google.com/*
@@ -51,6 +51,10 @@
             font-family: 'Google Sans', Roboto, Arial, sans-serif;
             overflow: hidden;
             border: 1px solid #e0e0e0;
+            transition: width 0.2s ease;
+        }
+        #gemini-helper-panel.gh-expanded {
+            width: 600px;
         }
         /* Dark Mode Styles */
         .gh-dark-panel {
@@ -239,7 +243,55 @@
         .gh-dark-panel .gh-tab { color: #aaa; }
         .gh-dark-panel .gh-tab.active { background: #1e1f20; color: #8ab4f8; border-bottom-color: #8ab4f8; }
         .gh-dark-panel .gh-img-item { border-color: #444; }
-        .gh-dark-panel .gh-img-name { background: rgba(30,31,32,0.9); color: #e3e3e3; }
+        .gh-dark-panel         .gh-img-name { background: rgba(30,31,32,0.9); color: #e3e3e3; }
+        
+        /* Replaceable text style */
+        .gh-replaceable {
+            background-color: #fff59d;
+            border-bottom: 2px solid #fbc02d;
+            color: #202124; /* Force dark text for contrast on yellow */
+            cursor: pointer;
+            padding: 0 2px;
+            border-radius: 2px;
+        }
+        .gh-dark-mode .gh-replaceable {
+            /* In dark mode, we can either use a dark highlight or keep the bright one with dark text.
+               Let's use a slightly muted yellow but keep text dark for readability. */
+            background-color: #fdd835;
+            border-bottom-color: #fbc02d;
+            color: #000000;
+        }
+
+        /* Edit View Styles */
+        #gh-edit-area {
+            width: 100%;
+            height: 300px; /* Increased height */
+            border: 1px solid #dadce0;
+            border-radius: 4px;
+            padding: 12px; /* More padding */
+            overflow-y: auto;
+            margin-bottom: 8px;
+            background: white;
+            white-space: pre-wrap;
+            outline: none;
+            box-sizing: border-box; /* Ensure padding doesn't affect width */
+            line-height: 1.5;
+        }
+        #gh-edit-area:focus {
+            border-color: #1a73e8;
+        }
+        .gh-dark-panel #gh-edit-area {
+            background: #333;
+            border-color: #555;
+            color: #fff;
+        }
+        .gh-toolbar {
+            display: flex;
+            gap: 8px;
+            margin-bottom: 8px;
+        }
+        .gh-edit { background: #fbbc04; color: #202124; }
+        .gh-dark-panel .gh-edit { background: #fdd663; color: #202124; }
     `);
 
   // Helper function to get the editor
@@ -338,7 +390,33 @@
     }
 
     // Restore text/HTML
-    editor.innerHTML = template.content;
+    // We need to process the content to ensure styles are inlined,
+    // because Gemini's editor might strip classes or global CSS might not apply.
+    const tempDiv = document.createElement("div");
+    tempDiv.innerHTML = template.content;
+
+    // Find replaceable parts and force inline styles
+    tempDiv.querySelectorAll(".gh-replaceable").forEach((span) => {
+      span.style.backgroundColor = "#fff59d";
+      span.style.borderBottom = "2px solid #fbc02d";
+      span.style.color = "#202124"; // Force black text for contrast
+      span.style.cursor = "pointer";
+    });
+
+    editor.innerHTML = tempDiv.innerHTML;
+
+    // Add click listeners to replaceable parts for easy selection
+    // We need to re-query because we just set innerHTML
+    editor.querySelectorAll(".gh-replaceable").forEach((span) => {
+      span.addEventListener("click", (e) => {
+        e.stopPropagation(); // Prevent editor from handling it weirdly
+        const range = document.createRange();
+        range.selectNodeContents(e.target);
+        const sel = window.getSelection();
+        sel.removeAllRanges();
+        sel.addRange(range);
+      });
+    });
 
     // Attempt to restore images
     // If images were pasted (in content), they are already in innerHTML.
@@ -378,6 +456,118 @@
     renderList();
   }
 
+  let currentEditingId = null;
+
+  function editTemplate(id) {
+    const saved = GM_getValue("gemini_templates", []);
+    const template = saved.find((t) => t.id === id);
+    if (!template) return;
+
+    currentEditingId = id;
+    const editArea = document.getElementById("gh-edit-area");
+    editArea.innerHTML = template.content;
+
+    // Switch to edit view and expand panel
+    document
+      .querySelectorAll(".gh-tab")
+      .forEach((t) => t.classList.remove("active"));
+    document
+      .querySelectorAll(".gh-view")
+      .forEach((v) => v.classList.remove("active"));
+    document.getElementById("gh-view-edit").classList.add("active");
+    document.getElementById("gemini-helper-panel").classList.add("gh-expanded");
+  }
+
+  function saveEditedTemplate() {
+    if (!currentEditingId) return;
+
+    const editArea = document.getElementById("gh-edit-area");
+    const newContent = editArea.innerHTML;
+    const newText = editArea.innerText;
+
+    const saved = GM_getValue("gemini_templates", []);
+    const index = saved.findIndex((t) => t.id === currentEditingId);
+    if (index !== -1) {
+      saved[index].content = newContent;
+      saved[index].text = newText;
+      saved[index].date = new Date().toISOString(); // Update date? Optional.
+      GM_setValue("gemini_templates", saved);
+
+      renderList();
+
+      // Switch back
+      document.querySelector('[data-tab="templates"]').click();
+      document
+        .getElementById("gemini-helper-panel")
+        .classList.remove("gh-expanded");
+    }
+  }
+
+  function wrapTextNodes(node) {
+    if (node.nodeType === 3) {
+      if (node.textContent.length === 0) return node;
+      const span = document.createElement("span");
+      span.className = "gh-replaceable";
+      span.style.backgroundColor = "#fff59d";
+      span.style.borderBottom = "2px solid #fbc02d";
+      span.style.color = "#202124";
+      span.style.cursor = "pointer";
+      span.textContent = node.textContent;
+      return span;
+    }
+    if (node.nodeType === 1 || node.nodeType === 11) {
+      if (node.classList && node.classList.contains("gh-replaceable"))
+        return node;
+      Array.from(node.childNodes).forEach((child) => {
+        const wrapped = wrapTextNodes(child);
+        if (wrapped !== child) {
+          node.replaceChild(wrapped, child);
+        }
+      });
+    }
+    return node;
+  }
+
+  function markSelection() {
+    const selection = window.getSelection();
+    if (!selection.rangeCount) return;
+
+    const range = selection.getRangeAt(0);
+    const container = document.getElementById("gh-edit-area");
+
+    // Ensure selection is inside our edit area
+    if (!container.contains(range.commonAncestorContainer)) return;
+
+    // Check if selection is empty
+    if (range.collapsed) {
+      alert("Please select some text to mark.");
+      return;
+    }
+
+    // Check if already inside a replaceable span - if so, unwrap?
+    // For simplicity, we just wrap.
+
+    const span = document.createElement("span");
+    span.className = "gh-replaceable";
+    // Add inline styles to ensure they persist if classes are stripped or styles don't apply
+    span.style.backgroundColor = "#fff59d";
+    span.style.borderBottom = "2px solid #fbc02d";
+    span.style.color = "#202124";
+    span.style.cursor = "pointer";
+
+    try {
+      range.surroundContents(span);
+      // Clear selection
+      selection.removeAllRanges();
+    } catch (e) {
+      console.log("Cross-block selection detected, using fallback wrapping");
+      const fragment = range.extractContents();
+      wrapTextNodes(fragment);
+      range.insertNode(fragment);
+      selection.removeAllRanges();
+    }
+  }
+
   // UI Construction
   function createUI() {
     // Create Panel first
@@ -403,6 +593,16 @@
                     <input type="text" id="gh-img-name-input" class="gh-input" placeholder="Image Name">
                     <button id="gh-save-img-btn" class="gh-btn">Save First Image from Editor</button>
                     <div id="gh-images-list" class="gh-grid"></div>
+                </div>
+                <div id="gh-view-edit" class="gh-view">
+                    <div class="gh-toolbar">
+                        <button id="gh-mark-btn" class="gh-btn" style="width:auto;margin:0;font-size:12px">Mark Selection as Replaceable</button>
+                    </div>
+                    <div id="gh-edit-area" contenteditable="true"></div>
+                    <div class="gh-item-actions" style="margin-top:12px">
+                        <button id="gh-save-edit-btn" class="gh-btn">Save Changes</button>
+                        <button id="gh-cancel-edit-btn" class="gh-btn" style="background:#f1f3f4;color:#333">Cancel</button>
+                    </div>
                 </div>
             </div>
         `;
@@ -447,6 +647,23 @@
         if (tab.dataset.tab === "images") renderImagesList();
       });
     });
+
+    // Edit View Listeners
+    document
+      .getElementById("gh-mark-btn")
+      .addEventListener("click", markSelection);
+    document
+      .getElementById("gh-save-edit-btn")
+      .addEventListener("click", saveEditedTemplate);
+    document
+      .getElementById("gh-cancel-edit-btn")
+      .addEventListener("click", () => {
+        document.getElementById("gh-view-edit").classList.remove("active");
+        document.querySelector('[data-tab="templates"]').click();
+        document
+          .getElementById("gemini-helper-panel")
+          .classList.remove("gh-expanded");
+      });
 
     // Initialize Button Injection
     waitForInputArea();
@@ -738,6 +955,9 @@
                     <button class="gh-item-btn gh-load" data-id="${
                       t.id
                     }">Load</button>
+                    <button class="gh-item-btn gh-edit" data-id="${
+                      t.id
+                    }">Edit</button>
                     <button class="gh-item-btn gh-delete" data-id="${
                       t.id
                     }">Delete</button>
@@ -750,6 +970,11 @@
     list.querySelectorAll(".gh-load").forEach((b) => {
       b.addEventListener("click", (e) =>
         loadTemplate(Number(e.target.dataset.id))
+      );
+    });
+    list.querySelectorAll(".gh-edit").forEach((b) => {
+      b.addEventListener("click", (e) =>
+        editTemplate(Number(e.target.dataset.id))
       );
     });
     list.querySelectorAll(".gh-delete").forEach((b) => {
