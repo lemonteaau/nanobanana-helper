@@ -1,5 +1,5 @@
 // ==UserScript==
-// @name         Gemini Helper
+// @name         Nano Banana Helper
 // @namespace    http://tampermonkey.net/
 // @version      0.3
 // @description  Save and restore prompts and images in Gemini
@@ -575,7 +575,7 @@
     panel.id = "gemini-helper-panel";
     panel.innerHTML = `
             <div id="gemini-helper-header">
-                <span>Gemini Helper</span>
+                <span>Nano Banana Helper</span>
                 <span style="cursor:pointer" id="gh-close">×</span>
             </div>
             <div class="gh-tabs">
@@ -776,7 +776,7 @@
     const editor = getEditor();
     if (!editor) {
       alert(
-        "Gemini Helper: Editor input field not found. Please report this issue."
+        "Nano Banana Helper: Editor input field not found. Please report this issue."
       );
       return;
     }
@@ -794,7 +794,7 @@
         let fileInput = document.querySelector('input[type="file"]');
         if (fileInput) {
           console.log(
-            "Gemini Helper: Found file input, attempting upload via DataTransfer"
+            "Nano Banana Helper: Found file input, attempting upload via DataTransfer"
           );
           const dataTransfer = new DataTransfer();
           dataTransfer.items.add(file);
@@ -804,7 +804,7 @@
         } else {
           // Approach 2: Dispatch 'drop' event on the dropzone/editor
           console.log(
-            "Gemini Helper: No file input found, trying Drop event on editor"
+            "Nano Banana Helper: No file input found, trying Drop event on editor"
           );
           const dataTransfer = new DataTransfer();
           dataTransfer.items.add(file);
@@ -821,7 +821,7 @@
             editor.dispatchEvent(dropEvent);
           } catch (err) {
             console.warn(
-              "Gemini Helper: DragEvent with view failed, trying without view",
+              "Nano Banana Helper: DragEvent with view failed, trying without view",
               err
             );
             // Fallback for Firefox strict mode / sandbox
@@ -834,7 +834,9 @@
           }
 
           // Approach 3: Fallback to Paste (Legacy)
-          console.log("Gemini Helper: Also dispatching Paste event as backup");
+          console.log(
+            "Nano Banana Helper: Also dispatching Paste event as backup"
+          );
           const pasteEvent = new ClipboardEvent("paste", {
             bubbles: true,
             cancelable: true,
@@ -844,7 +846,7 @@
           editor.dispatchEvent(pasteEvent);
         }
       } catch (e) {
-        console.error("Gemini Helper: Image insertion failed", e);
+        console.error("Nano Banana Helper: Image insertion failed", e);
       }
     }
 
@@ -904,7 +906,7 @@
     const toggle = document.createElement("div");
     toggle.id = "gemini-helper-toggle";
     toggle.innerHTML = "🍌";
-    toggle.title = "Gemini Helper";
+    toggle.title = "Nano Banana Helper";
 
     // Insert as first child (leftmost)
     container.insertBefore(toggle, container.firstChild);

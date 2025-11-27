@@ -1,6 +1,6 @@
-# Gemini Helper Userscript
+# Nano Banana Helper Userscript
 
-A Tampermonkey/Violentmonkey userscript that enhances the Google Gemini interface with template saving and base image management features.
+A Tampermonkey/Violentmonkey userscript that enhances the Google Gemini interface with prompt template saving and base image management features.
 
 ## Features
 
@@ -21,7 +21,7 @@ A Tampermonkey/Violentmonkey userscript that enhances the Google Gemini interfac
 
 1. Install a userscript manager extension for your browser (e.g., Tampermonkey, Violentmonkey).
 2. Create a new script in the manager.
-3. Copy the contents of `gemini-helper.user.js` into the script editor.
+3. Copy the contents of `nanobanana-helper.user.js` into the script editor.
 4. Save and refresh `gemini.google.com`.
 
 ## Usage
