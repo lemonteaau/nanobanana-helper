@@ -13,6 +13,78 @@
 (function () {
   "use strict";
 
+  // Localization
+  const translations = {
+    en: {
+      title: "Nano Banana Helper",
+      tab_templates: "Templates",
+      tab_images: "Base Images",
+      placeholder_template_name: "Template Name",
+      btn_save_prompt: "Save Current Prompt",
+      placeholder_image_name: "Image Name",
+      btn_save_image: "Save First Image from Editor",
+      btn_mark_selection: "Mark Selection as Replaceable",
+      btn_save_changes: "Save Changes",
+      btn_cancel: "Cancel",
+      btn_load: "Load",
+      btn_edit: "Edit",
+      btn_delete: "Delete",
+      msg_no_templates: "No saved templates",
+      msg_no_images: "No saved images",
+      alert_no_editor: "Could not find Gemini input editor.",
+      confirm_delete_template: "Delete this template?",
+      alert_select_text: "Please select some text to mark.",
+      alert_no_images: "No images found in editor!",
+      alert_image_error:
+        "Failed to process image. The image might not be fully loaded or accessible.",
+      alert_image_saved: "Image saved!",
+      error_image_load: "Image failed to load",
+      confirm_delete_image: "Delete this image?",
+      alert_editor_not_found_report:
+        "Nano Banana Helper: Editor input field not found. Please report this issue.",
+      helper_button_title: "Nano Banana Helper",
+    },
+    zh: {
+      title: "Nano Banana Helper",
+      tab_templates: "模版",
+      tab_images: "基础图片",
+      placeholder_template_name: "模版名称",
+      btn_save_prompt: "保存当前提示词",
+      placeholder_image_name: "图片名称",
+      btn_save_image: "保存编辑器中的第一张图片",
+      btn_mark_selection: "将选中内容标记为可替换",
+      btn_save_changes: "保存更改",
+      btn_cancel: "取消",
+      btn_load: "加载",
+      btn_edit: "编辑",
+      btn_delete: "删除",
+      msg_no_templates: "暂无保存的模版",
+      msg_no_images: "暂无保存的图片",
+      alert_no_editor: "无法找到 Gemini 输入编辑器。",
+      confirm_delete_template: "确定要删除此模版吗？",
+      alert_select_text: "请先选择一些文本进行标记。",
+      alert_no_images: "编辑器中未找到图片！",
+      alert_image_error: "无法处理图片。图片可能未完全加载或无法访问。",
+      alert_image_saved: "图片已保存！",
+      error_image_load: "图片加载失败",
+      confirm_delete_image: "确定要删除此图片吗？",
+      alert_editor_not_found_report:
+        "Nano Banana Helper: 未找到编辑器输入框。请报告此问题。",
+      helper_button_title: "Nano Banana Helper",
+    },
+  };
+
+  function getLanguage() {
+    const saved = GM_getValue("gh_language");
+    if (saved) return saved;
+    return navigator.language.startsWith("zh") ? "zh" : "en";
+  }
+
+  function t(key) {
+    const lang = getLanguage();
+    return translations[lang][key] || translations["en"][key];
+  }
+
   // Styles for the helper UI
   GM_addStyle(`
         #gemini-helper-toggle {
@@ -353,7 +425,7 @@
   function saveTemplate(name) {
     const editor = getEditor();
     if (!editor) {
-      alert("Could not find Gemini input editor.");
+      alert(t("alert_no_editor"));
       return;
     }
 
@@ -385,7 +457,7 @@
 
     const editor = getEditor();
     if (!editor) {
-      alert("Could not find Gemini input editor.");
+      alert(t("alert_no_editor"));
       return;
     }
 
@@ -449,7 +521,7 @@
   }
 
   function deleteTemplate(id) {
-    if (!confirm("Delete this template?")) return;
+    if (!confirm(t("confirm_delete_template"))) return;
     const saved = GM_getValue("gemini_templates", []);
     const newSaved = saved.filter((t) => t.id !== id);
     GM_setValue("gemini_templates", newSaved);
@@ -540,7 +612,7 @@
 
     // Check if selection is empty
     if (range.collapsed) {
-      alert("Please select some text to mark.");
+      alert(t("alert_select_text"));
       return;
     }
 
@@ -569,52 +641,108 @@
   }
 
   // UI Construction
-  function createUI() {
-    // Create Panel first
+  function renderPanel(restoreState = false) {
+    let oldPanel = document.getElementById("gemini-helper-panel");
+    let displayState = "none";
+    let posBottom = "";
+    let posRight = "";
+    let activeTab = "templates";
+
+    if (oldPanel) {
+      if (restoreState) {
+        displayState = oldPanel.style.display;
+        posBottom = oldPanel.style.bottom;
+        posRight = oldPanel.style.right;
+        const activeTabEl = oldPanel.querySelector(".gh-tab.active");
+        if (activeTabEl) activeTab = activeTabEl.dataset.tab;
+      }
+      oldPanel.remove();
+    }
+
+    // Create Panel
     const panel = document.createElement("div");
     panel.id = "gemini-helper-panel";
+    if (restoreState) {
+      panel.style.display = displayState;
+      if (posBottom) panel.style.bottom = posBottom;
+      if (posRight) panel.style.right = posRight;
+    }
+
+    const currentLang = getLanguage();
+    const langLabel = currentLang === "zh" ? "EN" : "中文";
+
     panel.innerHTML = `
             <div id="gemini-helper-header">
-                <span>Nano Banana Helper</span>
-                <span style="cursor:pointer" id="gh-close">×</span>
+                <span>${t("title")}</span>
+                <div style="display:flex;gap:12px;align-items:center">
+                    <span id="gh-lang-toggle" style="cursor:pointer;font-size:12px;color:#666;background:#eee;padding:2px 6px;border-radius:4px">${langLabel}</span>
+                    <span style="cursor:pointer" id="gh-close">×</span>
+                </div>
             </div>
             <div class="gh-tabs">
-                <div class="gh-tab active" data-tab="templates">Templates</div>
-                <div class="gh-tab" data-tab="images">Base Images</div>
+                <div class="gh-tab ${
+                  activeTab === "templates" ? "active" : ""
+                }" data-tab="templates">${t("tab_templates")}</div>
+                <div class="gh-tab ${
+                  activeTab === "images" ? "active" : ""
+                }" data-tab="images">${t("tab_images")}</div>
             </div>
             <div id="gemini-helper-content">
-                <div id="gh-view-templates" class="gh-view active">
-                    <input type="text" id="gh-name-input" class="gh-input" placeholder="Template Name">
-                    <button id="gh-save-btn" class="gh-btn">Save Current Prompt</button>
+                <div id="gh-view-templates" class="gh-view ${
+                  activeTab === "templates" ? "active" : ""
+                }">
+                    <input type="text" id="gh-name-input" class="gh-input" placeholder="${t(
+                      "placeholder_template_name"
+                    )}">
+                    <button id="gh-save-btn" class="gh-btn">${t(
+                      "btn_save_prompt"
+                    )}</button>
                     <div style="margin: 12px 0; border-top: 1px solid #eee;"></div>
                     <div id="gh-list"></div>
                 </div>
-                <div id="gh-view-images" class="gh-view">
-                    <input type="text" id="gh-img-name-input" class="gh-input" placeholder="Image Name">
-                    <button id="gh-save-img-btn" class="gh-btn">Save First Image from Editor</button>
+                <div id="gh-view-images" class="gh-view ${
+                  activeTab === "images" ? "active" : ""
+                }">
+                    <input type="text" id="gh-img-name-input" class="gh-input" placeholder="${t(
+                      "placeholder_image_name"
+                    )}">
+                    <button id="gh-save-img-btn" class="gh-btn">${t(
+                      "btn_save_image"
+                    )}</button>
                     <div id="gh-images-list" class="gh-grid"></div>
                 </div>
                 <div id="gh-view-edit" class="gh-view">
                     <div class="gh-toolbar">
-                        <button id="gh-mark-btn" class="gh-btn" style="width:auto;margin:0;font-size:12px">Mark Selection as Replaceable</button>
+                        <button id="gh-mark-btn" class="gh-btn" style="width:auto;margin:0;font-size:12px">${t(
+                          "btn_mark_selection"
+                        )}</button>
                     </div>
                     <div id="gh-edit-area" contenteditable="true"></div>
                     <div class="gh-item-actions" style="margin-top:12px">
-                        <button id="gh-save-edit-btn" class="gh-btn">Save Changes</button>
-                        <button id="gh-cancel-edit-btn" class="gh-btn" style="background:#f1f3f4;color:#333">Cancel</button>
+                        <button id="gh-save-edit-btn" class="gh-btn">${t(
+                          "btn_save_changes"
+                        )}</button>
+                        <button id="gh-cancel-edit-btn" class="gh-btn" style="background:#f1f3f4;color:#333">${t(
+                          "btn_cancel"
+                        )}</button>
                     </div>
                 </div>
             </div>
         `;
     document.body.appendChild(panel);
 
-    // Initial Theme Check
+    // Apply theme immediately
     checkTheme();
-    setInterval(checkTheme, 2000);
 
-    // Event Listeners for Panel
+    // Event Listeners
     document.getElementById("gh-close").addEventListener("click", () => {
       panel.style.display = "none";
+    });
+
+    document.getElementById("gh-lang-toggle").addEventListener("click", () => {
+      const next = currentLang === "zh" ? "en" : "zh";
+      GM_setValue("gh_language", next);
+      renderPanel(true);
     });
 
     document.getElementById("gh-save-btn").addEventListener("click", () => {
@@ -630,7 +758,6 @@
     // Tab Switching
     panel.querySelectorAll(".gh-tab").forEach((tab) => {
       tab.addEventListener("click", () => {
-        // Remove active class from all tabs and views
         panel
           .querySelectorAll(".gh-tab")
           .forEach((t) => t.classList.remove("active"));
@@ -638,13 +765,13 @@
           .querySelectorAll(".gh-view")
           .forEach((v) => v.classList.remove("active"));
 
-        // Add active class to clicked tab and corresponding view
         tab.classList.add("active");
         document
           .getElementById(`gh-view-${tab.dataset.tab}`)
           .classList.add("active");
 
         if (tab.dataset.tab === "images") renderImagesList();
+        if (tab.dataset.tab === "templates") renderList();
       });
     });
 
@@ -665,7 +792,14 @@
           .classList.remove("gh-expanded");
       });
 
-    // Initialize Button Injection
+    // Initial Render of Lists
+    if (activeTab === "templates") renderList();
+    if (activeTab === "images") renderImagesList();
+  }
+
+  function createUI() {
+    renderPanel();
+    setInterval(checkTheme, 2000);
     waitForInputArea();
   }
 
@@ -673,7 +807,7 @@
   async function saveBaseImage(name) {
     const images = getImages();
     if (images.length === 0) {
-      alert("No images found in editor!");
+      alert(t("alert_no_images"));
       return;
     }
 
@@ -686,9 +820,7 @@
         src = await convertImageToDataUrl(targetImg.element);
       } catch (e) {
         console.error("Failed to convert blob", e);
-        alert(
-          "Failed to process image. The image might not be fully loaded or accessible."
-        );
+        alert(t("alert_image_error"));
         return;
       }
     }
@@ -705,7 +837,7 @@
     GM_setValue("gemini_base_images", saved);
     renderImagesList();
     document.getElementById("gh-img-name-input").value = "";
-    alert("Image saved!");
+    alert(t("alert_image_saved"));
   }
 
   function convertImageToDataUrl(img) {
@@ -718,7 +850,7 @@
         process();
       } else {
         img.onload = process;
-        img.onerror = () => reject(new Error("Image failed to load"));
+        img.onerror = () => reject(new Error(t("error_image_load")));
       }
 
       function process() {
@@ -740,14 +872,16 @@
 
     list.innerHTML = saved.length
       ? ""
-      : '<div style="grid-column:1/-1;text-align:center;color:#999">No saved images</div>';
+      : `<div style="grid-column:1/-1;text-align:center;color:#999">${t(
+          "msg_no_images"
+        )}</div>`;
 
     saved.forEach((img) => {
       const item = document.createElement("div");
       item.className = "gh-img-item";
       item.innerHTML = `
                 <img src="${img.src}">
-                <div class="gh-img-delete" title="Delete">×</div>
+                <div class="gh-img-delete" title="${t("btn_delete")}">×</div>
                 <div class="gh-img-name">${img.name}</div>
             `;
 
@@ -760,7 +894,7 @@
       // Delete
       item.querySelector(".gh-img-delete").addEventListener("click", (e) => {
         e.stopPropagation();
-        if (!confirm("Delete this image?")) return;
+        if (!confirm(t("confirm_delete_image"))) return;
         const newSaved = GM_getValue("gemini_base_images", []).filter(
           (i) => i.id !== img.id
         );
@@ -775,9 +909,7 @@
   function insertBaseImage(src) {
     const editor = getEditor();
     if (!editor) {
-      alert(
-        "Nano Banana Helper: Editor input field not found. Please report this issue."
-      );
+      alert(t("alert_editor_not_found_report"));
       return;
     }
 
@@ -906,7 +1038,7 @@
     const toggle = document.createElement("div");
     toggle.id = "gemini-helper-toggle";
     toggle.innerHTML = "🍌";
-    toggle.title = "Nano Banana Helper";
+    toggle.title = t("helper_button_title");
 
     // Insert as first child (leftmost)
     container.insertBefore(toggle, container.firstChild);
@@ -932,21 +1064,25 @@
 
     list.innerHTML = saved.length
       ? ""
-      : '<div style="text-align:center;color:#999">No saved templates</div>';
+      : `<div style="text-align:center;color:#999">${t(
+          "msg_no_templates"
+        )}</div>`;
 
-    saved.forEach((t) => {
+    saved.forEach((t_item) => {
       const item = document.createElement("div");
       item.className = "gh-item";
-      const imgCount = t.images ? t.images.length : 0;
+      const imgCount = t_item.images ? t_item.images.length : 0;
       item.innerHTML = `
                 <div class="gh-item-header">
-                    <span>${t.name}</span>
+                    <span>${t_item.name}</span>
                     <span style="font-size:10px;color:#999">${new Date(
-                      t.date
+                      t_item.date
                     ).toLocaleDateString()}</span>
                 </div>
                 <div class="gh-item-preview">
-                    ${t.text.substring(0, 50)}${t.text.length > 50 ? "..." : ""}
+                    ${t_item.text.substring(0, 50)}${
+        t_item.text.length > 50 ? "..." : ""
+      }
                     ${
                       imgCount > 0
                         ? `<span class="gh-badge">📷 ${imgCount}</span>`
@@ -955,14 +1091,14 @@
                 </div>
                 <div class="gh-item-actions">
                     <button class="gh-item-btn gh-load" data-id="${
-                      t.id
-                    }">Load</button>
+                      t_item.id
+                    }">${t("btn_load")}</button>
                     <button class="gh-item-btn gh-edit" data-id="${
-                      t.id
-                    }">Edit</button>
+                      t_item.id
+                    }">${t("btn_edit")}</button>
                     <button class="gh-item-btn gh-delete" data-id="${
-                      t.id
-                    }">Delete</button>
+                      t_item.id
+                    }">${t("btn_delete")}</button>
                 </div>
             `;
       list.appendChild(item);
