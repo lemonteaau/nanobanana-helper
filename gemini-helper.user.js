@@ -264,6 +264,9 @@
 
     // Also try to focus
     editor.focus();
+
+    // Close panel
+    document.getElementById("gemini-helper-panel").style.display = "none";
   }
 
   function deleteTemplate(id) {
