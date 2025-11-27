@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Gemini Helper
 // @namespace    http://tampermonkey.net/
-// @version      0.1
+// @version      0.2
 // @description  Save and restore prompts and images in Gemini
 // @author       lemontea
 // @match        https://gemini.google.com/*
@@ -157,11 +157,114 @@
         .gh-dark-panel .gh-load { background: #1c3aa9; color: #d2e3fc; }
         .gh-dark-panel .gh-delete { background: #691b19; color: #f6aea9; }
         .gh-dark-panel .gh-badge { background: #444; color: #ccc; }
+
+        /* Tabs and Image Grid */
+        .gh-tabs {
+            display: flex;
+            border-bottom: 1px solid #e0e0e0;
+            background: #f1f3f4;
+        }
+        .gh-tab {
+            flex: 1;
+            text-align: center;
+            padding: 10px;
+            cursor: pointer;
+            font-size: 13px;
+            font-weight: 500;
+            color: #5f6368;
+        }
+        .gh-tab.active {
+            color: #1a73e8;
+            border-bottom: 2px solid #1a73e8;
+            background: #fff;
+        }
+        .gh-view {
+            display: none;
+        }
+        .gh-view.active {
+            display: block;
+        }
+        .gh-grid {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 8px;
+            margin-top: 12px;
+        }
+        .gh-img-item {
+            position: relative;
+            border-radius: 8px;
+            overflow: hidden;
+            aspect-ratio: 1;
+            border: 1px solid #e0e0e0;
+            cursor: pointer;
+        }
+        .gh-img-item img {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+        }
+        .gh-img-delete {
+            position: absolute;
+            top: 2px;
+            right: 2px;
+            background: rgba(0,0,0,0.5);
+            color: white;
+            border-radius: 50%;
+            width: 20px;
+            height: 20px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 14px;
+            display: none;
+        }
+        .gh-img-item:hover .gh-img-delete {
+            display: flex;
+        }
+        .gh-img-name {
+            position: absolute;
+            bottom: 0;
+            left: 0;
+            right: 0;
+            background: rgba(255,255,255,0.9);
+            font-size: 10px;
+            padding: 2px 4px;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            text-align: center;
+        }
+        /* Dark mode tabs/grid */
+        .gh-dark-panel .gh-tabs { background: #2d2e30; border-bottom-color: #444; }
+        .gh-dark-panel .gh-tab { color: #aaa; }
+        .gh-dark-panel .gh-tab.active { background: #1e1f20; color: #8ab4f8; border-bottom-color: #8ab4f8; }
+        .gh-dark-panel .gh-img-item { border-color: #444; }
+        .gh-dark-panel .gh-img-name { background: rgba(30,31,32,0.9); color: #e3e3e3; }
     `);
 
   // Helper function to get the editor
   function getEditor() {
-    return document.querySelector(".ql-editor");
+    // 1. Try to find the specific contenteditable area within the new Gemini structure
+    // The user reported 'xapfileselectordropzone' and 'text-input-field'
+    const wrappers = document.querySelectorAll(
+      "[xapfileselectordropzone], .text-input-field"
+    );
+    for (const wrapper of wrappers) {
+      const editable = wrapper.querySelector('[contenteditable="true"]');
+      if (editable) return editable;
+      // If the wrapper itself is editable (unlikely for a dropzone but possible)
+      if (wrapper.getAttribute("contenteditable") === "true") return wrapper;
+    }
+
+    // 2. Fallback: any contenteditable (might pick up wrong things if there are multiple)
+    const contentEditable = document.querySelector('[contenteditable="true"]');
+    if (contentEditable) return contentEditable;
+
+    // 3. Legacy QL
+    const ql = document.querySelector(".ql-editor");
+    if (ql) return ql;
+
+    return null;
   }
 
   // Helper to find images
@@ -173,14 +276,11 @@
       (img) => ({
         type: "pasted",
         src: img.src,
+        element: img,
       })
     );
 
     // 2. Images uploaded as files (thumbnails)
-    // This is tricky as selectors change. We look for images with blob: or specific classes near the input.
-    // Heuristic: Look for images in the same container as the editor that are not icons.
-    // The container ref in snapshot was generic[ref=e79]
-    // We will try to find images that look like user content (blob:)
     const potentialUploads = Array.from(
       document.querySelectorAll('img[src^="blob:"], img[src^="data:image/"]')
     );
@@ -191,6 +291,7 @@
       .map((img) => ({
         type: "upload",
         src: img.src,
+        element: img,
       }));
 
     return [...pastedImages, ...uploads];
@@ -287,18 +388,28 @@
                 <span>Gemini Helper</span>
                 <span style="cursor:pointer" id="gh-close">×</span>
             </div>
+            <div class="gh-tabs">
+                <div class="gh-tab active" data-tab="templates">Templates</div>
+                <div class="gh-tab" data-tab="images">Base Images</div>
+            </div>
             <div id="gemini-helper-content">
-                <input type="text" id="gh-name-input" class="gh-input" placeholder="Template Name">
-                <button id="gh-save-btn" class="gh-btn">Save Current Prompt</button>
-                <div style="margin: 12px 0; border-top: 1px solid #eee;"></div>
-                <div id="gh-list"></div>
+                <div id="gh-view-templates" class="gh-view active">
+                    <input type="text" id="gh-name-input" class="gh-input" placeholder="Template Name">
+                    <button id="gh-save-btn" class="gh-btn">Save Current Prompt</button>
+                    <div style="margin: 12px 0; border-top: 1px solid #eee;"></div>
+                    <div id="gh-list"></div>
+                </div>
+                <div id="gh-view-images" class="gh-view">
+                    <input type="text" id="gh-img-name-input" class="gh-input" placeholder="Image Name">
+                    <button id="gh-save-img-btn" class="gh-btn">Save First Image from Editor</button>
+                    <div id="gh-images-list" class="gh-grid"></div>
+                </div>
             </div>
         `;
     document.body.appendChild(panel);
 
     // Initial Theme Check
     checkTheme();
-    // Periodically check theme as it might change
     setInterval(checkTheme, 2000);
 
     // Event Listeners for Panel
@@ -311,8 +422,229 @@
       saveTemplate(name);
     });
 
+    document.getElementById("gh-save-img-btn").addEventListener("click", () => {
+      const name = document.getElementById("gh-img-name-input").value;
+      saveBaseImage(name);
+    });
+
+    // Tab Switching
+    panel.querySelectorAll(".gh-tab").forEach((tab) => {
+      tab.addEventListener("click", () => {
+        // Remove active class from all tabs and views
+        panel
+          .querySelectorAll(".gh-tab")
+          .forEach((t) => t.classList.remove("active"));
+        panel
+          .querySelectorAll(".gh-view")
+          .forEach((v) => v.classList.remove("active"));
+
+        // Add active class to clicked tab and corresponding view
+        tab.classList.add("active");
+        document
+          .getElementById(`gh-view-${tab.dataset.tab}`)
+          .classList.add("active");
+
+        if (tab.dataset.tab === "images") renderImagesList();
+      });
+    });
+
     // Initialize Button Injection
     waitForInputArea();
+  }
+
+  // Image Management Logic
+  async function saveBaseImage(name) {
+    const images = getImages();
+    if (images.length === 0) {
+      alert("No images found in editor!");
+      return;
+    }
+
+    const targetImg = images[0]; // Take first image
+    let src = targetImg.src;
+
+    // Convert to Base64 if blob to ensure persistence
+    if (src.startsWith("blob:")) {
+      try {
+        src = await convertImageToDataUrl(targetImg.element);
+      } catch (e) {
+        console.error("Failed to convert blob", e);
+        alert(
+          "Failed to process image. The image might not be fully loaded or accessible."
+        );
+        return;
+      }
+    }
+
+    const baseImage = {
+      id: Date.now(),
+      name: name || "Untitled",
+      src: src,
+      date: new Date().toISOString(),
+    };
+
+    const saved = GM_getValue("gemini_base_images", []);
+    saved.unshift(baseImage);
+    GM_setValue("gemini_base_images", saved);
+    renderImagesList();
+    document.getElementById("gh-img-name-input").value = "";
+    alert("Image saved!");
+  }
+
+  function convertImageToDataUrl(img) {
+    return new Promise((resolve, reject) => {
+      const canvas = document.createElement("canvas");
+      const ctx = canvas.getContext("2d");
+
+      // Ensure image is loaded
+      if (img.complete && img.naturalWidth > 0) {
+        process();
+      } else {
+        img.onload = process;
+        img.onerror = () => reject(new Error("Image failed to load"));
+      }
+
+      function process() {
+        try {
+          canvas.width = img.naturalWidth;
+          canvas.height = img.naturalHeight;
+          ctx.drawImage(img, 0, 0);
+          resolve(canvas.toDataURL("image/png"));
+        } catch (err) {
+          reject(err);
+        }
+      }
+    });
+  }
+
+  function renderImagesList() {
+    const list = document.getElementById("gh-images-list");
+    const saved = GM_getValue("gemini_base_images", []);
+
+    list.innerHTML = saved.length
+      ? ""
+      : '<div style="grid-column:1/-1;text-align:center;color:#999">No saved images</div>';
+
+    saved.forEach((img) => {
+      const item = document.createElement("div");
+      item.className = "gh-img-item";
+      item.innerHTML = `
+                <img src="${img.src}">
+                <div class="gh-img-delete" title="Delete">×</div>
+                <div class="gh-img-name">${img.name}</div>
+            `;
+
+      // Click to insert
+      item.addEventListener("click", (e) => {
+        if (e.target.classList.contains("gh-img-delete")) return;
+        insertBaseImage(img.src);
+      });
+
+      // Delete
+      item.querySelector(".gh-img-delete").addEventListener("click", (e) => {
+        e.stopPropagation();
+        if (!confirm("Delete this image?")) return;
+        const newSaved = GM_getValue("gemini_base_images", []).filter(
+          (i) => i.id !== img.id
+        );
+        GM_setValue("gemini_base_images", newSaved);
+        renderImagesList();
+      });
+
+      list.appendChild(item);
+    });
+  }
+
+  function insertBaseImage(src) {
+    const editor = getEditor();
+    if (!editor) {
+      alert(
+        "Gemini Helper: Editor input field not found. Please report this issue."
+      );
+      return;
+    }
+
+    // Focus editor first
+    editor.focus();
+
+    if (src.startsWith("data:")) {
+      try {
+        const blob = dataURLtoBlob(src);
+        const file = new File([blob], "pasted_image.png", { type: blob.type });
+
+        // Approach 1: Find hidden file input (Most reliable for Angular apps)
+        // Usually input[type="file"] is near the upload button or global
+        let fileInput = document.querySelector('input[type="file"]');
+        if (fileInput) {
+          console.log(
+            "Gemini Helper: Found file input, attempting upload via DataTransfer"
+          );
+          const dataTransfer = new DataTransfer();
+          dataTransfer.items.add(file);
+          fileInput.files = dataTransfer.files;
+          fileInput.dispatchEvent(new Event("change", { bubbles: true }));
+          fileInput.dispatchEvent(new Event("input", { bubbles: true }));
+        } else {
+          // Approach 2: Dispatch 'drop' event on the dropzone/editor
+          console.log(
+            "Gemini Helper: No file input found, trying Drop event on editor"
+          );
+          const dataTransfer = new DataTransfer();
+          dataTransfer.items.add(file);
+
+          // Firefox security fix: view must be window, but in some contexts (sandbox) it fails.
+          // Try-catch block specifically for the event construction to fallback if needed.
+          try {
+            const dropEvent = new DragEvent("drop", {
+              bubbles: true,
+              cancelable: true,
+              dataTransfer: dataTransfer,
+              view: window, // This might fail in some Firefox sandbox contexts
+            });
+            editor.dispatchEvent(dropEvent);
+          } catch (err) {
+            console.warn(
+              "Gemini Helper: DragEvent with view failed, trying without view",
+              err
+            );
+            // Fallback for Firefox strict mode / sandbox
+            const dropEvent = new DragEvent("drop", {
+              bubbles: true,
+              cancelable: true,
+              dataTransfer: dataTransfer,
+            });
+            editor.dispatchEvent(dropEvent);
+          }
+
+          // Approach 3: Fallback to Paste (Legacy)
+          console.log("Gemini Helper: Also dispatching Paste event as backup");
+          const pasteEvent = new ClipboardEvent("paste", {
+            bubbles: true,
+            cancelable: true,
+            clipboardData: dataTransfer,
+            view: window,
+          });
+          editor.dispatchEvent(pasteEvent);
+        }
+      } catch (e) {
+        console.error("Gemini Helper: Image insertion failed", e);
+      }
+    }
+
+    // Close panel
+    document.getElementById("gemini-helper-panel").style.display = "none";
+  }
+
+  function dataURLtoBlob(dataurl) {
+    var arr = dataurl.split(","),
+      mime = arr[0].match(/:(.*?);/)[1],
+      bstr = atob(arr[1]),
+      n = bstr.length,
+      u8arr = new Uint8Array(n);
+    while (n--) {
+      u8arr[n] = bstr.charCodeAt(n);
+    }
+    return new Blob([u8arr], { type: mime });
   }
 
   function checkTheme() {
