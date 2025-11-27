@@ -2,6 +2,9 @@
 
 A Tampermonkey/Violentmonkey userscript that enhances the Google Gemini interface with prompt template saving and base image management features.
 
+<img width="300" height="443" alt="image" src="https://github.com/user-attachments/assets/54e6015d-5f1f-43fd-97fe-72978d7f8e45" />
+
+
 ## Features
 
 ### Prompt Templates
